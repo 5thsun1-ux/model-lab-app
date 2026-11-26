@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="다운로드도 실행도 없는 메모리 배치 예상 앱 — 엔진·프로필을 고르면 MoE 모델이 VRAM/DRAM/SSD 어디에 자리 잡는지(예상 전용) 보여줍니다.">
+<title>모델 실험실 — 메모리 예상 (예상 전용)</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='2' width='14' height='3.4' rx='1' fill='%233fb68b'/%3E%3Crect x='1' y='6.6' width='14' height='3.4' rx='1' fill='%235aa2e8'/%3E%3Crect x='1' y='11.2' width='14' height='3.4' rx='1' fill='%23b98ae8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">모델 실험실 <span class="ver">standalone</span></div>
+  <div class="warn-badge">⚠ 예상 전용 — 참고용으로만 사용하세요</div>
+  <div class="lang-btns" id="lang-btns" role="group" aria-label="언어">
+    <button type="button" class="lang-btn" data-lang="ko">한국어</button>
+    <button type="button" class="lang-btn" data-lang="ja">日本語</button>
+    <button type="button" class="lang-btn" data-lang="zh-TW">繁體中文</button>
+    <button type="button" class="lang-btn" data-lang="zh-CN">简体中文</button>
+    <button type="button" class="lang-btn" data-lang="en">English</button>
+  </div>
+</header>
+
+<div class="disclaimer">
+  <strong>이 앱은 다운로드도 실행도 하지 않습니다.</strong>
+  <span>아래 모든 수치는 각 엔진의 공개된 크기 표와 선택한 프로필(가상 VRAM · DRAM · 컨텍스트)로 계산한 예상값입니다.</span>
+  <span>실제 설치·측정 결과와 다를 수 있으며, 판단의 참고만으로 사용하세요. 아무 모델도 이 컴퓨터에 받아지지 않습니다.</span>
+  <strong>이 화면의 모든 결과는 예상치일 뿐이며, 실제 작동을 보장하지 않습니다.</strong>
+</div>
+
+<main>
+  <!-- 1단계: 물리 장비 확인 (3-1) -->
+  <section class="card step" id="step-hw">
+    <h2><span class="stepno">1</span> <span>이 컴퓨터의 실제 스펙 확인</span> <span class="hw-mode" id="hw-mode-badge"></span></h2>
+    <p class="muted"><span>OS · GPU · RAM을 확인합니다.</span>
+      <span>브라우저는 GPU 이름과 코어 개수만 정확히 알 수 있고, VRAM·RAM 총량은 제한 때문에 모자라게 보고될 수 있어 직접 확인해 고칠 수 있게 두었습니다 (Windows 작업 관리자 참고).</span>
+      <span>다른 스펙으로 실험하려면 가상 스펙 지정을 쓰세요.</span></p>
+    <dl class="facts" id="hw-facts"></dl>
+    <div class="hw-edit">
+      <label id="hw-vram-wrap">VRAM (GB) <input type="number" id="hw-vram" min="1" max="192" step="1"></label>
+      <label><span id="hw-ram-label">시스템 RAM (GB)</span> <input type="number" id="hw-ram" min="4" max="2048" step="1"></label>
+      <span id="hw-egpu-wrap" hidden>
+        <label><span>외부 그래픽카드 (이름)</span> <input type="text" id="hw-egpu-gpu" autocomplete="off" placeholder="예: RTX 4060 Ti (eGPU 독)"></label>
+        <label>외부 VRAM (GB) <input type="number" id="hw-egpu-vram" autocomplete="off" min="1" max="48" step="1"></label>
+      </span>
+      <span class="muted small"><span>수정하면 이 브라우저에 저장되고, 아래의 엔진·모델 확인 기준이 됩니다.</span></span>
+    </div>
+    <div class="step-actions">
+      <button type="button" id="hw-confirm-btn">이 스펙으로 확인</button>
+      <button type="button" id="virt-toggle-btn">가상 스펙 지정…</button>
+    </div>
+    <div id="virt-panel" class="virt-panel" hidden>
+      <span class="label"><span>가상 스펙 지정 (다른 컴퓨터를 실험해 봅니다)</span></span>
+      <div class="hw-edit">
+        <label>OS
+          <select id="virt-os">
+            <option value="windows">Windows</option>
+            <option value="linux">Linux</option>
+            <option value="macos">macOS (Apple Silicon)</option>
+          </select>
+        </label>
+        <label><span>GPU 이름</span> <input type="text" id="virt-gpu" autocomplete="off" placeholder="예: NVIDIA GeForce RTX 4090 / GB10 (DGX Spark) / Apple M4 Max"></label>
+        <label><span>메모리 유형</span>
+          <select id="virt-mem">
+            <option value="auto">자동 (GPU 이름으로 감지)</option>
+            <option value="split">분리형 — VRAM과 RAM 별도</option>
+            <option value="unified">통합 RAM — 공유 메모리 (GB10 · Apple Silicon · AI Max 등)</option>
+          </select>
+          <span class="mem-detect small" id="virt-mem-detected"></span>
+        </label>
+        <label id="virt-vram-wrap">VRAM (GB) <input type="number" id="virt-vram" min="1" max="192" step="1"></label>
+        <label><span id="virt-ram-label">RAM (GB)</span> <input type="number" id="virt-ram" min="4" max="2048" step="1"></label>
+        <span id="virt-egpu-wrap" hidden>
+          <label><span>외부 그래픽카드 (이름)</span> <input type="text" id="virt-egpu-gpu" autocomplete="off" placeholder="예: RTX 4060 Ti (eGPU 독)"></label>
+          <label>외부 VRAM (GB) <input type="number" id="virt-egpu-vram" autocomplete="off" min="1" max="48" step="1"></label>
+        </span>
+      </div>
+      <div class="step-actions">
+        <button type="button" id="virt-apply-btn">가상 스펙 적용</button>
+        <button type="button" id="virt-real-btn">실제 스펙으로 돌아가기</button>
+      </div>
+    </div>
+    <p class="confirmed-line"><span>확인된 기준:</span> <b id="hw-summary"></b></p>
+    <p class="unified-warn" id="unified-warn" hidden></p>
+    <p class="unified-warn ext-note" id="unified-warn-ext" hidden></p>
+  </section>
+
+  <!-- 2단계: 엔진 선택 (3-2) -->
+  <section class="card step locked" id="step-engine">
+    <h2><span class="stepno">2</span> <span>엔진 선택</span></h2>
+    <p class="muted" id="engine-gate-note">🔒 1단계에서 스펙을 확인하면 열립니다.</p>
+    <p class="muted"><span>엔진을 고르면 현재 스펙(OS/GPU/VRAM)에서 그 엔진이 지원될 가능성이 높은지 공개 문서(모델 카드) 기준으로 미리 예상해 표시합니다. 이 표시는 모델 카드를 기본으로 한 예상치이며, 실제 작동을 보장하는 것은 아닙니다.</span>
+      <span>미지원처럼 나와도 선택은 가능하지만, 예상 계산은 "그 하드웨어라면" 조건이 붙습니다.</span></p>
+    <div class="engine-list" id="engine-list" role="radiogroup" aria-label="엔진"></div>
+    <div class="engine-add">
+      <input type="url" id="engine-url" placeholder="직접 엔진 추가 — 모델 목록 JSON의 URL (예: https://example.com/engine.json)">
+      <button type="button" id="engine-add-btn">추가</button>
+    </div>
+    <span class="muted small" id="engine-add-note"><span>URL 방식: 아래 형식의 JSON을 아무 데나(예: GitHub raw) 올리고 주소만 넣으면 됩니다.</span>
+      <button type="button" id="engine-format-btn" class="linkish">형식 보기</button>
+    </span>
+    <pre id="engine-format" hidden>{
+  "name": "내 엔진",
+  "url": "https://github.com/me/engine",
+  "os": ["windows", "linux"],
+  "gpus": ["nvidia", "amd"],
+  "min_vram_gb": 8,
+  "tiered": true,
+  "models": [
+    { "name": "MoE 35B-A3B", "quant": "Q4_K_M", "download_gb": 21.2,
+      "row_bytes": 26624, "floor_gb": 4.0,
+      "active_ratio": 0.09, "ngram_gb": 0, "min_vram_gb": 8 }
+  ]
+}</pre>
+    <!-- 모델 직접 검색·입력 (Hugging Face) — ollama는 카탈로그 차단(CORS), unsloth/lmstudio는 보충용 -->
+    <div class="hfcat" id="hfcat-panel" hidden>
+      <div class="hfcat-row">
+        <input type="text" id="hfcat-q" autocomplete="off" placeholder="모델 검색 (Hugging Face GGUF·MLX) — 예: Qwen3.8, gemma-4, Hy4">
+        <button type="button" id="hfcat-search-btn">검색</button>
+      </div>
+      <span class="muted small" id="hfcat-note"></span>
+      <div id="hfcat-results" class="hfcat-results"></div>
+      <div class="hfcat-row hfcat-manual">
+        <input type="text" id="hfcat-m-name" autocomplete="off" placeholder="직접 입력 — 모델명 (예: some-model q4_K_M)">
+        <input type="text" id="hfcat-m-quant" autocomplete="off" placeholder="양자화 (예: q4_K_M)">
+        <input type="number" id="hfcat-m-gb" min="0.1" step="0.1" placeholder="GB">
+        <button type="button" id="hfcat-m-add-btn">추가</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3단계: 모델 선택 + 프로필 (3-3) -->
+  <section class="card step locked" id="step-model">
+    <h2><span class="stepno">3</span> <span>모델 선택 · 프로필</span></h2>
+    <p class="muted" id="model-gate-note">🔒 2단계에서 엔진을 선택하면 열립니다.</p>
+
+    <div class="field">
+      <label class="label" for="model-name"><span>모델 (선택한 엔진이 지원하는 목록)</span></label>
+      <select id="model-name"></select>
+      <label class="label" for="model-quant"><span>양자화</span></label>
+      <select id="model-quant"></select>
+      <span class="muted small" id="model-note"></span>
+    </div>
+
+    <div class="grid3">
+      <div class="field" id="field-vram">
+        <span class="label"><span id="vram-label">VRAM 프로필</span> <output id="vram-out"></output></span>
+        <div class="pills" id="vram-pills"></div>
+      </div>
+      <div class="field" id="field-dram">
+        <span class="label"><span>DRAM 프로필</span> <output id="dram-out"></output></span>
+        <div class="pills" id="dram-pills"></div>
+      </div>
+      <div class="field" id="field-uram" hidden>
+        <span class="label"><span>통합 RAM 프로필</span> <output id="uram-out"></output></span>
+        <div class="pills" id="uram-pills"></div>
+      </div>
+      <div class="field">
+        <span class="label"><span>컨텍스트</span> <output id="ctx-out"></output></span>
+        <div class="pills" id="ctx-pills"></div>
+      </div>
+    </div>
+
+    <div class="field res-preset">
+      <span class="label"><span>자원 프리셋</span></span>
+      <div class="step-actions">
+        <button type="button" id="res-full-btn">전체 자원 사용</button>
+        <button type="button" id="res-keep20-btn">일상 작업용 자원 20% 남김</button>
+      </div>
+      <span class="muted small"><span>이 기능은 엔진에 따라서 지원할 수도 있고 안 할 수도 있습니다 — 엔진이 이 제한을 무시할 수 있습니다.</span></span>
+    </div>
+    <p class="ctx-reco muted small" id="ctx-reco"></p>
+  </section>
+
+  <!-- 4단계: 예상 측정값 -->
+  <section class="card step" id="step-predict">
+    <h2><span class="stepno">4</span> <span>예상 측정값 — 3단 계층</span></h2>
+    <p class="muted"><span>이 엔진·모델의 설계된 메모리 계층입니다:</span>
+      <b class="k-vram">VRAM = 활성 전문가 + 콘텍스트</b> ·
+      <b class="k-ram">DRAM = 비활성 전문가(항상 대기)</b> ·
+      <b class="k-ssd">SSD = N-gram 임베딩·테이블 (설계대로 놓는 곳, 누수 아님)</b>.
+      <span>어느 한 계층이 자기 자리를</span> <b><span>넘칠 때만</span></b> <b class="k-leak"><span>누수</span></b><span>(PCIe 재읽기 · 파일 재읽기)로 판단합니다.</span>
+      <span>통합 RAM 하드웨어에서는 VRAM/DRAM 행이 통합 RAM 행으로 표시되고, 넘칠 때는 바로 파일 재읽기가 됩니다.</span></p>
+    <dl class="facts" id="predict-facts"></dl>
+    <div id="predict-verdicts"></div>
+    <div id="model-compat"></div>
+    <div class="bar-wrap">
+      <div class="bar" id="tier-bar" title="계층별 바이트 분배"></div>
+      <div class="bar-key">
+        <span class="k-vram">VRAM(활성+밀집)</span><span class="k-ctx">콘텍스트 캐시</span><span class="k-ram">RAM(비활성 대기)</span><span class="k-ssd">SSD(N-gram 설계)</span><span class="k-leak">누수(초과분)</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>다시 한 번: 이 화면의 모든 수치는 실제로 올린 것이 아닌 예상이며 참고용으로만 사용하세요.</span>
+  <span>계산 기준은 4gbVramStrata 실험실과 같은 산식입니다 (카드 − 예약 256 MiB − 밀집 가중치 − 고정 오버헤드 512 MiB − 어텐션 캐시 = 활성 전문가 자리; RAM 예산 = DRAM − OS 보관 3.5 GB − 대화 캐시).</span>
+  <span>엔진 모델 크기·지원 범위 출처: 각 프로젝트의 공개 문서(Strata · PolyStrata · Maya · Basalt · YASAKANI · Sync-Strata · TensorFold · Bonsai README, setup.py)이며 ~ 표시는 근사값입니다.</span>
+</footer>
+
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
