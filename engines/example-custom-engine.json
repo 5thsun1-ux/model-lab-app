@@ -1,0 +1,16 @@
+{
+  "name": "예제 엔진 (직접 추가 데모)",
+  "url": "https://example.com/my-engine",
+  "desc": "URL 방식으로 엔진을 추가하면 이렇게 표시됩니다. models의 각 항목이 선택지입니다. (tiered: true → 계층화 MoE 그룹)",
+  "os": ["windows", "linux"],
+  "gpus": ["nvidia", "amd"],
+  "min_vram_gb": 8,
+  "tiered": true,
+  "models": [
+    { "name": "MoE 35B-A3B", "quant": "Q4_K_M", "download_gb": 21.2,
+      "row_bytes": 26624, "floor_gb": 4.0, "active_ratio": 0.09 },
+    { "name": "MoE 35B-A3B + N-gram", "quant": "Q2_K_XL", "download_gb": 41.6,
+      "row_bytes": 26624, "floor_gb": 4.0, "active_ratio": 0.09, "ngram_gb": 29 },
+    { "name": "Tiny Dense 8B", "quant": "Q4_K_M", "download_gb": 4.8, "dense": true }
+  ]
+}
